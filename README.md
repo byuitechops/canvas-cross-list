@@ -1,7 +1,8 @@
 # canvas-cross-list
 
+NOTICE: README in WIP status.
+
 ## Description 
-// TODO
 
 ## How to Install
 
