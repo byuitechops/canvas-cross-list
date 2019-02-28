@@ -5,15 +5,11 @@
 
 
 ## Background
-Paragraph describing context of the needs of the stakeholder. It should focus on the **why** of the project.
-
 This program exists solely to automate the process of cross-listing courses. Previously, Corey Moore cross listed courses in Canvas by hand and it can become tedious. This process is to help automate all of that.
 
 -----
 
 ## Objectives
-Bullet list sentences of **what** the tool should accomplish for them.
-
 - Parse CSV or through CLI, get all of the source OUs and destination OU
 - Cross List the Source source OU into destination OU
 - Display success or error message to the user.
