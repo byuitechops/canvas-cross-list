@@ -5,15 +5,16 @@
 
 
 ## Background
-This program exists solely to automate the process of cross-listing courses. Previously, Corey Moore cross listed courses in Canvas by hand and it can become tedious. This process is to help automate all of that.
+### Explain the Problem
+Cross listing in Canvas is basically helping the instructors be more efficient in their workflow. When an instructor have multiple sections for the same course, they can opt to have their course cross listed, which means that all of the sections will be "merged" into one. All of the sections are still active and the students see no difference pre and post cross listing. It allows the instructor to not have to maintain multiple gradebooks for multiple sections of the same class.
+
+
 
 -----
 
 ## Objectives
-- Parse CSV or through CLI, get all of the source OUs and destination OU
-- Cross List the Source source OU into destination OU
-- Display success or error message to the user.
-
+### Explain the Solution
+This process was done by hand by Br. Moore in the past and this project aims to automate that process when provided a CSV or answer CLI questions.
 -----
 
 # Requirements
