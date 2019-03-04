@@ -30,6 +30,20 @@ const redoQuestion = [{
     message: 'Is the above OUs correct?',
 }];
 
+const csvQuestion = [{
+    type: 'input',
+    name: 'csvLocation',
+    message: 'Enter the path to your CSV file:'
+}];
+
+const initialQuestion = [{
+    type: 'list',
+    name: 'type',
+    message: 'CLI or CSV?',
+    choices: ['CLI', 'CSV'],
+    filter: val => val.toLowerCase()
+}];
+
 /**************************FUNCTIONS**************************/
 
 async function promptSource() {
@@ -44,8 +58,18 @@ async function promptRedo() {
     return await inquirer.prompt(redoQuestion);
 }
 
+async function promptCSV() {
+    return await inquirer.prompt(csvQuestion);
+}
+
+async function promptInitialQuestion() {
+    return await inquirer.prompt(initialQuestion);
+}
+
 module.exports = {
     promptSource,
     promptDestination,
-    promptRedo
-}
+    promptRedo,
+    promptCSV,
+    promptInitialQuestion
+};

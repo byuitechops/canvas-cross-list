@@ -13,6 +13,8 @@
     "async": "^2.6.2",
     "canvas-api-wrapper": "^3.3.5",
     "chalk": "^2.4.2",
-    "inquirer": "^6.2.2"
+    "inquirer": "^6.2.2",
+    "npm": "^6.8.0",
+    "read-in-csv": "git+https://github.com/byuitechops/read-in-csv.git"
   }
 }
