@@ -44,6 +44,24 @@ const initialQuestion = [{
     filter: val => val.toLowerCase()
 }];
 
+const termSemesterQuestion = [{
+    type: 'list',
+    name: 'termSemester',
+    message: 'Choose term semester:',
+    choices: ['Winter', 'Spring', 'Summer', 'Fall'],
+    filter: val => val.toLowerCase()
+}];
+
+const termYearQuestion = [{
+    type: 'input',
+    name: 'termYear',
+    message: 'Enter term year (2019):',
+    validation: answer => {
+        if (!answer.test(/^\s*\d{4}\s*$/g)) return 'Invalid input';
+        return true;
+    }
+}];
+
 /**************************FUNCTIONS**************************/
 
 async function promptSource() {
@@ -66,10 +84,20 @@ async function promptInitialQuestion() {
     return await inquirer.prompt(initialQuestion);
 }
 
+async function promptTermSemesterQuestion() {
+    return await inquirer.prompt(termSemesterQuestion);
+}
+
+async function promptTermYearQuestion() {
+    return await inquirer.prompt(termYearQuestion);
+}
+
 module.exports = {
     promptSource,
     promptDestination,
     promptRedo,
     promptCSV,
-    promptInitialQuestion
+    promptInitialQuestion,
+    promptTermSemesterQuestion,
+    promptTermYearQuestion
 };
