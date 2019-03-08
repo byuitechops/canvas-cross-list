@@ -4,35 +4,41 @@ const moment = require('moment');
 const canvas = require('canvas-api-wrapper');
 const questions = require('../questions');
 
-const BAD_PHRASES = [
-    'Master',
-    'Initiative'
-];
+const TEST = false;
 
-// cli stuff here
+/**************************************************
+ * getInput
+ * 
+ * This function handles all of the input from the
+ * user.
+ *************************************************/
 async function getInput() {
     let s = await questions.promptTermSemesterQuestion();
     let y = await questions.promptTermYearQuestion();
+    let t = await questions.promptTermTypeQuestion();
 
     return {
         semester: s.termSemester,
-        year: y.termYear
+        year: y.termYear,
+        type: t.termType
     };
 }
 
-function checkFolder() {
-    const path = './generatedCsv';
-
-    if (!fs.existsSync(path))
-        fs.mkdirSync(path);
-}
-
-// generate CSV here
+/**************************************************
+ * processOutput
+ * @param {Object} term
+ * 
+ * This function processes the output by calling
+ * the correct functions to organize/filter data
+ * into an array of objects to be injected into 
+ * a csv.
+ *************************************************/
 async function processOutput(term) {
+    //ensure that the folder exists 
     checkFolder();
 
     let time = moment().format('MM-DD-YY');
-    const path = `./generatedCsv/generated_${time}`;
+    const path = `./generatedCsv/generated_on_${time}${TEST ? '_test' : ''}.csv`;
     const columns = [
         'id',
         'name',
@@ -40,19 +46,50 @@ async function processOutput(term) {
         'course_code'
     ];
 
-    let data = await apiCall(`${term.semester} ${term.year}`)
-    let results = filterResults(data);
+    //retrieve and filter data 
+    let data = await apiCall(`${term.semester} ${term.year}`);
+    let results = filterResults(data, term);
 
-    console.log(results);
+    //store data
     let csv = d3.csvFormat(results, columns);
     fs.writeFileSync(path, csv);
+    console.log('Inserted a CSV in generatedCsv folder.');
 }
 
+/**************************************************
+ * handleError
+ * @param {Error} error
+ * 
+ * This function simply handles all of the errors
+ * that could possibly happen.
+ *************************************************/
 function handleError(error) {
     console.log('ERROR: ', error);
 }
 
-function filterResults(results) {
+/**************************************************
+ * checkFolder
+ * 
+ * This function checks for a folder and creates one
+ * if it does not exist
+ *************************************************/
+function checkFolder() {
+    const path = './generatedCsv';
+
+    if (!fs.existsSync(path))
+        fs.mkdirSync(path);
+}
+
+
+/**************************************************
+ * filterResults
+ * @param {Array} results
+ * @param {Object} term
+ * 
+ * This function also goes through all of the results
+ * and picks out the necessary stuff for the csv.
+ *************************************************/
+function filterResults(results, term) {
     let arr = [];
 
     results.forEach(result => {
@@ -60,6 +97,8 @@ function filterResults(results) {
         let name = result.name;
         let sis_course_id = result.sis_course_id;
         let course_code = result.course_code;
+
+        //ensure that all necessary info exist
         if (id && name && sis_course_id && course_code) {
             arr.push({
                 id: id,
@@ -70,9 +109,42 @@ function filterResults(results) {
         }
     });
 
-    return arr;
+    return cleanResults(arr, term);
 }
 
+/**************************************************
+ * cleanResults
+ * @param {Array} results
+ * @param {Object} term
+ * 
+ * This function goes through each row and looks at the 
+ * sis_course_id and checks it against the user's input to 
+ * help verify that it is correct and complete.
+ *************************************************/
+function cleanResults(results, term) {
+    let semester = term.semester;
+    let year = term.year;
+    let type = term.type;
+
+    return results.filter(result => {
+        let resultArr = result.sis_course_id.toLowerCase().split('.');
+
+        //does it meet the requirements?
+        if (resultArr[1] === type &&
+            resultArr[2] === year &&
+            resultArr[3] === semester) return true;
+
+        return false;
+    });
+}
+
+/**************************************************
+ * apiCall
+ * @param {Object} term
+ * 
+ * This makes an API call to Canvas and gets the
+ * necessary requirements.
+ *************************************************/
 async function apiCall(term) {
     const accountId = 1;
     const termInt = await identifyTermInteger(term);
@@ -82,7 +154,15 @@ async function apiCall(term) {
     return results;
 }
 
-async function mapTermToInteger(term) {
+/**************************************************
+ * mapTermToInteger
+ * 
+ * This retrieves the terms and creates a map
+ * to help ensure that we get the correct term
+ * number since Canvas only uses integers for 
+ * terms and it's not easy to understand.
+ *************************************************/
+async function mapTermToInteger() {
     const accountId = 1;
     let termsArr = [];
 
@@ -101,8 +181,15 @@ async function mapTermToInteger(term) {
     return termsArr;
 }
 
+/**************************************************
+ * identifyTermInteger
+ * @param {Object} term
+ * 
+ * This function returns the integer for the
+ * user's input.
+ *************************************************/
 async function identifyTermInteger(term) {
-    let map = await mapTermToInteger(term);
+    let map = await mapTermToInteger();
     let id = -1;
 
     map.forEach(ele => {
@@ -114,6 +201,12 @@ async function identifyTermInteger(term) {
     return id;
 }
 
+/**************************************************
+ * generateIO
+ * 
+ * This serves as a driver function to generate
+ * the CSV necessary for the job.
+ *************************************************/
 async function generateIO() {
     try {
         let input = await getInput();

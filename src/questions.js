@@ -62,6 +62,14 @@ const termYearQuestion = [{
     }
 }];
 
+const termTypeQuestion = [{
+    type: 'list',
+    name: 'termType',
+    message: 'Choose the following:',
+    choices: ['Campus', 'Online/Pathway'],
+    filter: val => val.toLowerCase()
+}];
+
 /**************************FUNCTIONS**************************/
 
 async function promptSource() {
@@ -92,6 +100,10 @@ async function promptTermYearQuestion() {
     return await inquirer.prompt(termYearQuestion);
 }
 
+async function promptTermTypeQuestion() {
+    return await inquirer.prompt(termTypeQuestion);
+}
+
 module.exports = {
     promptSource,
     promptDestination,
@@ -99,5 +111,6 @@ module.exports = {
     promptCSV,
     promptInitialQuestion,
     promptTermSemesterQuestion,
-    promptTermYearQuestion
+    promptTermYearQuestion,
+    promptTermTypeQuestion
 };
