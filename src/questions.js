@@ -65,7 +65,7 @@ const termYearQuestion = [{
 const termTypeQuestion = [{
     type: 'list',
     name: 'termType',
-    message: 'Choose the following:',
+    message: 'Choose the following type:',
     choices: ['Campus', 'Online/Pathway'],
     filter: val => val.toLowerCase()
 }];

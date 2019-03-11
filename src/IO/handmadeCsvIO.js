@@ -1,19 +1,44 @@
-const questions = require('./questions.js');
-const theCsv = require('./handCsv');
+const d3 = require('d3-dsv');
+const theCsv = require('../handCsv');
 
+/******************************************
+ * getInput
+ * @returns {Object}
+ * 
+ * 
+ *****************************************/
 async function getInput() {
-    return parseCSV(await questions.promptCSV());
+    return theCsv.retrieveCSV();
 }
 
-// return it as js object
+/******************************************
+ * processOutput
+ * @param {Object} input
+ * @returns {Array}
+ * 
+ * This returns a JSON object of the CSV
+ * given by the user.
+ *****************************************/
 async function processOutput(input) {
-
+    return d3.parse(input.csvLocation);
 }
 
+/******************************************
+ * handleError
+ * @param {Error} error
+ * 
+ * This simply logs the error to the console.
+ *****************************************/
 function handleError(error) {
     console.log('ERROR: ', error);
 }
 
+/******************************************
+ * handmadeCsvIO
+ * 
+ * This function acts as a driver for the
+ * CSVs that are handmade by the author.
+ *****************************************/
 async function handmadeCsvIO() {
     try {
         let input = getInput();

@@ -1,4 +1,7 @@
-// require main
+const d3 = require('d3-dsv');
+const fs = require('fs');
+const canvas = require('canvas-api-wrapper');
+const questions = require('../questions');
 
 async function getInput() {
 

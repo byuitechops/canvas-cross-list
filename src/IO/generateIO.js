@@ -43,7 +43,9 @@ async function processOutput(term) {
         'id',
         'name',
         'sis_course_id',
-        'course_code'
+        'course_code',
+        'instructor',
+        'instructor_id'
     ];
 
     //retrieve and filter data 
@@ -97,14 +99,17 @@ function filterResults(results, term) {
         let name = result.name;
         let sis_course_id = result.sis_course_id;
         let course_code = result.course_code;
+        let instructors = result.teachers;
 
         //ensure that all necessary info exist
-        if (id && name && sis_course_id && course_code) {
+        if (id && name && sis_course_id && course_code && instructors) {
             arr.push({
                 id: id,
                 name: name,
                 sis_course_id: sis_course_id,
-                course_code: course_code
+                course_code: course_code,
+                instructor: (instructors.length > 0) ? instructors[0].display_name : "none found",
+                instructor_id: (instructors.length > 0) ? instructors[0].id : -1
             });
         }
     });
@@ -124,13 +129,13 @@ function filterResults(results, term) {
 function cleanResults(results, term) {
     let semester = term.semester;
     let year = term.year;
-    let type = term.type;
+    let type = (term.type.toLowerCase() === 'online/pathway'.toLowerCase() ? ['online', 'pathway'] : ['campus']);
 
     return results.filter(result => {
         let resultArr = result.sis_course_id.toLowerCase().split('.');
 
         //does it meet the requirements?
-        if (resultArr[1] === type &&
+        if (type.includes(resultArr[1]) &&
             resultArr[2] === year &&
             resultArr[3] === semester) return true;
 
@@ -149,7 +154,7 @@ async function apiCall(term) {
     const accountId = 1;
     const termInt = await identifyTermInteger(term);
 
-    let results = await canvas.get(`/api/v1/accounts/${accountId}/courses?enrollment_term_id=${termInt}&blueprint=false`);
+    let results = await canvas.get(`/api/v1/accounts/${accountId}/courses?enrollment_term_id=${termInt}&blueprint=false&include[]=teachers`);
 
     return results;
 }
