@@ -1,3 +1,4 @@
+const fs = require('fs');
 const d3 = require('d3-dsv');
 const theCsv = require('../handCsv');
 
@@ -20,7 +21,7 @@ async function getInput() {
  * given by the user.
  *****************************************/
 async function processOutput(input) {
-    return d3.parse(input.csvLocation);
+    return d3.csvParse(fs.readFileSync(input.csvLocation, 'utf-8'));
 }
 
 /******************************************
