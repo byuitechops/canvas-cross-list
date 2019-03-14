@@ -1,0 +1,248 @@
+const asyncLib = require('async');
+const {
+    promisify
+} = require('util');
+const asyncReduce = promisify(asyncLib.reduce);
+
+/**************************************
+ * transformData
+ * @param {Object} csvEntries
+ * @returns {Array}
+ * 
+ * This function will reduce through all
+ * of the parsed CSV data and build out
+ * an array like this:
+ * 
+ * [
+ *      {
+ *          instructor: <string>                 //the instructor's name
+ *          instructorId: <int>                  //the instructor's id to double check identity
+ *          courses: <Array of JSON objects>     //array of  courses that the instructor is teaching
+ *      },
+ *      ...,
+ *      {  
+ *          instructor: 'none found',            //no instructors were found so this object serves as a junk drawer
+ *          instructorId: -1                     //number that represents 'none found'
+ *          courses: <Array of JSON objects>     //array of courses that has no instructor
+ *      }
+ *  ]
+ *************************************/
+async function transformData(csvEntries) {
+    return await asyncReduce(csvEntries, [], async (instructorsCourses, csvEntry) => {
+        let instructor = csvEntry.instructor;
+        let instructorId = csvEntry.instructor_id;
+        let sisId = csvEntry.sis_course_id.split('.').slice(-2);
+        let courseId = csvEntry.id;
+        let foundFlag = false;
+
+        // check through the array
+        for (let instructorCourse of instructorsCourses) {
+            if (instructorCourse.name.toLowerCase() === instructor.toLowerCase() &&
+                instructorCourse.id === instructorId) {
+
+                instructorCourse.courses.push({
+                    course: sisId[0],
+                    section: Number(sisId[1]),
+                    courseId: Number(courseId)
+                });
+
+                foundFlag = true;
+            }
+        }
+
+        // the instructor and/or instructor with the same ID was not found
+        if (!foundFlag) {
+            //create new entry
+            instructorsCourses.push({
+                name: instructor,
+                id: instructorId,
+                courses: []
+            });
+
+            //update the course array with the current course/section
+            instructorsCourses[instructorsCourses.length - 1].courses.push({
+                course: sisId[0],
+                section: sisId[1]
+            });
+        }
+
+        return instructorsCourses;
+    });
+}
+
+/*********************************************************
+ * filterInstructors
+ * @param {Array} instructorsCourses
+ * @returns {Object}
+ * 
+ * This function will go through and filter out the things
+ * we do not need for the cross list such as the following:
+ *      - No instructors for the course
+ *      - Teachers only teaching one section for a course
+ * 
+ * It will return an object that is like:
+ *  {
+ *      toCrossList: []         // valid courses here
+ *      dontHaveTeachers: []    // Courses that don't have an instructor
+ *  }
+ ********************************************************/
+function filterInstructors(courses) {
+    const BAD = "none found";
+
+    let toCrossList = courses.filter(course => course.name !== BAD && course.id !== -1);
+    let dontHaveTeachers = courses.filter(course => course.name === BAD && course.id === -1);
+
+    return {
+        toCrossList: toCrossList,
+        dontHaveTeachers: dontHaveTeachers
+    }
+}
+
+/*********************************************************
+ * createCrossList
+ * @param {Array} instructors
+ * @returns {Array}
+ * 
+ * This function will go through the recently parsed CSV
+ * data and create an array of objects that will go through
+ * the cross list API call function.
+ * 
+ * The expected output is like:
+ * 
+ * [
+ *      {
+ *          instructor: <string>
+ *          instructorId: <int>
+ *          crossList: [{
+ *              course: <string>        //adding to double check before official cross list
+ *              destination: <int>      //destination section
+ *              sources: [<ints>]       //sources to cross list into destination
+ *          },
+ *          ...
+ *         ]
+ *      },
+ *      ...
+ * ]
+ ********************************************************/
+async function createCrossList(instructors) {
+    return await asyncReduce(instructors, [], async (toCrossList, instructor) => {
+        //this returns all of the sections for a course
+        let combinedCourses = instructor.courses.reduce((combinedCourses, course) => {
+            // create an array if it doesn't exist and push the sections to  it
+            combinedCourses[course.course] = Array.isArray(combinedCourses[course.course]) ? combinedCourses[course.course] : [];
+
+            combinedCourses[course.course].push({
+                courseId: course.courseId,
+                section: course.section
+            });
+            return combinedCourses;
+        }, {})
+
+        // looping through all of the sections and build out the object array we want
+        Object.keys(combinedCourses)
+            //filtering out if teacher is only teaching one section of a course
+            .filter(combinedCourse => combinedCourses[combinedCourse].length > 1)
+            //build out the object array
+            .forEach(combinedCourse => {
+                //sort by least to greatest so we can grab destination/source
+                let sortedSections = combinedCourses[combinedCourse].sort((a, b) => a.section - b.section);
+
+                //grab first number in array for the destination and removing it from the array too
+                let destination = sortedSections.shift();
+
+                //we have the information now so we build an object and push it to the accumulator
+                toCrossList.push({
+                    instructor: instructor.name,
+                    instructorId: instructor.id,
+                    course: combinedCourse,
+                    destination: destination,
+                    sources: sortedSections
+                });
+            });
+
+        return toCrossList;
+    });
+}
+
+/***************************************************
+ * logic
+ * @param {Object} csvData
+ * @returns {Array}
+ * 
+ * This function acts as a driver for the logic
+ * functions to ensure that we are building the 
+ * proper array.
+ **************************************************/
+async function buildCrossListData(csvData) {
+    /*
+    requirements:
+        - same teacher          X
+        - same course name      X
+        - grade activity        X (apiIO) - https://canvas.instructure.com/doc/api/all_resources.html#method.grade_change_audit_api.for_course
+        - moving to a course that does not have a section      
+        - moving from a course that has more than one section
+    */
+    let instructorsCourses = await transformData(csvData);
+    let filteredInstructorsCourses = filterInstructors(instructorsCourses);
+    let toCrossList = await createCrossList(filteredInstructorsCourses.toCrossList);
+
+    return {
+        toCrossList: toCrossList,
+        dontHaveTeachers: filteredInstructorsCourses.dontHaveTeachers
+    }
+}
+
+module.exports = {
+    buildCrossListData
+}
+
+// -------------------------------------------------------------------------------
+
+// async function test(instructors) {
+//     return await asyncReduce(instructors, [], async (acc, instructor) => {
+//         let crossLists;
+
+//         let combinedCourses = instructor.courses.reduce((combinedCourses, course) => {
+//             let combinedCourse = combinedCourses.find(combinedCourse => combinedCourse.name === course.name);
+
+//             if (combinedCourse === undefined) {
+//                 combinedCourses.push({
+//                     name: course.course,
+//                     sections: []
+//                 });
+//                 combinedCourse = combinedCourses[combinedCourses.length - 1];
+//             }
+
+//             combinedCourse.sections.push({
+//                 courseId: course.courseId,
+//                 section: course.section
+//             })
+
+//             return combinedCourses;
+//         }, []);
+
+//         // looping through all of the sections and build out the object array we want
+//         crossLists = combinedCourses
+//             //we don't care for classes taught by an instructor that only has one section
+//             .filter(combinedCourse => combinedCourse.sections.length > 1)
+//             //sort by least to greatest so we can grab destination/source
+//             .map(combinedCourse => combinedCourse.sections.sort((a, b) => a.section - b.section))
+//             //build out the object array
+//             .map(combinedCourse => {
+
+//                 //grab first number in array for the destination and removing it from the array too
+//                 let destination = combinedCourse.sections.shift();
+
+//                 //we have the information now so we build an object and push it to the accumulator
+//                 return {
+//                     instructor: instructor.name,
+//                     instructorId: instructor.id,
+//                     course: combinedCourse.name,
+//                     destination: destination,
+//                     sources: combinedCourse.sections
+//                 };
+//             });
+
+//         return acc.concat(crossLists);
+//     });
+// }
