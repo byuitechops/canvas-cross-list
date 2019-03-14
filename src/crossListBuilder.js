@@ -1,3 +1,4 @@
+const pretty = require('json-stringify-pretty-compact');
 const asyncLib = require('async');
 const {
     promisify
@@ -27,47 +28,35 @@ const asyncReduce = promisify(asyncLib.reduce);
  *      }
  *  ]
  *************************************/
-async function transformData(csvEntries) {
-    return await asyncReduce(csvEntries, [], async (instructorsCourses, csvEntry) => {
+function transformData(csvEntries) {
+    return csvEntries.reduce((instructorsCourses, csvEntry) => {
         let instructor = csvEntry.instructor;
         let instructorId = csvEntry.instructor_id;
         let sisId = csvEntry.sis_course_id.split('.').slice(-2);
         let courseId = csvEntry.id;
-        let foundFlag = false;
 
-        // check through the array
-        for (let instructorCourse of instructorsCourses) {
-            if (instructorCourse.name.toLowerCase() === instructor.toLowerCase() &&
-                instructorCourse.id === instructorId) {
+        let instructorsCourse = instructorsCourses.find(instructorsCourse => {
+            return (instructorsCourse.name.toLowerCase() === instructor.toLowerCase() &&
+                instructorsCourse.id === instructorId)
+        });
 
-                instructorCourse.courses.push({
-                    course: sisId[0],
-                    section: Number(sisId[1]),
-                    courseId: Number(courseId)
-                });
-
-                foundFlag = true;
-            }
-        }
-
-        // the instructor and/or instructor with the same ID was not found
-        if (!foundFlag) {
-            //create new entry
+        if (instructorsCourse === undefined) {
             instructorsCourses.push({
                 name: instructor,
                 id: instructorId,
                 courses: []
             });
-
-            //update the course array with the current course/section
-            instructorsCourses[instructorsCourses.length - 1].courses.push({
-                course: sisId[0],
-                section: sisId[1]
-            });
+            instructorsCourse = instructorsCourses[instructorsCourses.length - 1];
         }
 
+        instructorsCourse.courses.push({
+            course: sisId[0],
+            section: Number(sisId[1]),
+            courseId: courseId
+        });
+
         return instructorsCourses;
-    });
+    }, []);
 }
 
 /*********************************************************
@@ -86,15 +75,27 @@ async function transformData(csvEntries) {
  *      dontHaveTeachers: []    // Courses that don't have an instructor
  *  }
  ********************************************************/
-function filterInstructors(courses) {
+function filterInstructors(instructors) {
     const BAD = "none found";
 
-    let toCrossList = courses.filter(course => course.name !== BAD && course.id !== -1);
-    let dontHaveTeachers = courses.filter(course => course.name === BAD && course.id === -1);
+    let identifyValidInstructors = {
+        validInstructors: [],
+        invalidInstructors: []
+    }
+
+    identifyValidInstructors = instructors.reduce((identifyValidInstructors, instructor) => {
+        if (instructor.name !== BAD && Number(instructor.id) !== -1) {
+            identifyValidInstructors['validInstructors'].push(instructor);
+        } else {
+            identifyValidInstructors['invalidInstructors'].push(instructor);
+        }
+
+        return identifyValidInstructors;
+    }, identifyValidInstructors);
 
     return {
-        toCrossList: toCrossList,
-        dontHaveTeachers: dontHaveTeachers
+        validInstructors: identifyValidInstructors.validInstructors,
+        invalidInstructors: identifyValidInstructors.invalidInstructors
     }
 }
 
@@ -125,42 +126,53 @@ function filterInstructors(courses) {
  * ]
  ********************************************************/
 async function createCrossList(instructors) {
-    return await asyncReduce(instructors, [], async (toCrossList, instructor) => {
-        //this returns all of the sections for a course
-        let combinedCourses = instructor.courses.reduce((combinedCourses, course) => {
-            // create an array if it doesn't exist and push the sections to  it
-            combinedCourses[course.course] = Array.isArray(combinedCourses[course.course]) ? combinedCourses[course.course] : [];
+    return await asyncReduce(instructors, [], async (acc, instructor) => {
+        let crossLists;
 
-            combinedCourses[course.course].push({
+        let combinedCourses = instructor.courses.reduce((combinedCourses, course) => {
+            let combinedCourse = combinedCourses.find(combinedCourse => combinedCourse.name === course.course);
+
+            if (combinedCourse === undefined) {
+                combinedCourses.push({
+                    name: course.course,
+                    sections: []
+                });
+                combinedCourse = combinedCourses[combinedCourses.length - 1];
+            }
+
+            combinedCourse.sections.push({
                 courseId: course.courseId,
                 section: course.section
-            });
+            })
+
             return combinedCourses;
-        }, {})
+        }, []);
 
         // looping through all of the sections and build out the object array we want
-        Object.keys(combinedCourses)
-            //filtering out if teacher is only teaching one section of a course
-            .filter(combinedCourse => combinedCourses[combinedCourse].length > 1)
+        crossLists = combinedCourses
+            //we don't care for classes taught by an instructor that only has one section
+            .filter(combinedCourse => combinedCourse.sections.length > 1)
+            //sort by least to greatest so we can grab destination/source
+            .map(combinedCourse => {
+                combinedCourse.sections.sort((a, b) => a.section - b.section);
+                return combinedCourse;
+            })
             //build out the object array
-            .forEach(combinedCourse => {
-                //sort by least to greatest so we can grab destination/source
-                let sortedSections = combinedCourses[combinedCourse].sort((a, b) => a.section - b.section);
-
+            .map(combinedCourse => {
                 //grab first number in array for the destination and removing it from the array too
-                let destination = sortedSections.shift();
+                let destination = combinedCourse.sections.shift();
 
                 //we have the information now so we build an object and push it to the accumulator
-                toCrossList.push({
+                return {
                     instructor: instructor.name,
                     instructorId: instructor.id,
-                    course: combinedCourse,
+                    course: combinedCourse.name,
                     destination: destination,
-                    sources: sortedSections
-                });
+                    sources: combinedCourse.sections
+                };
             });
 
-        return toCrossList;
+        return acc.concat(crossLists);
     });
 }
 
@@ -182,67 +194,16 @@ async function buildCrossListData(csvData) {
         - moving to a course that does not have a section      
         - moving from a course that has more than one section
     */
-    let instructorsCourses = await transformData(csvData);
+    let instructorsCourses = transformData(csvData);
     let filteredInstructorsCourses = filterInstructors(instructorsCourses);
-    let toCrossList = await createCrossList(filteredInstructorsCourses.toCrossList);
+    let preparedCrossListData = await createCrossList(filteredInstructorsCourses.validInstructors);
 
     return {
-        toCrossList: toCrossList,
-        dontHaveTeachers: filteredInstructorsCourses.dontHaveTeachers
+        readyForCrossList: preparedCrossListData,
+        dontHaveTeachers: filteredInstructorsCourses.invalidInstructors
     }
 }
 
 module.exports = {
     buildCrossListData
 }
-
-// -------------------------------------------------------------------------------
-
-// async function test(instructors) {
-//     return await asyncReduce(instructors, [], async (acc, instructor) => {
-//         let crossLists;
-
-//         let combinedCourses = instructor.courses.reduce((combinedCourses, course) => {
-//             let combinedCourse = combinedCourses.find(combinedCourse => combinedCourse.name === course.name);
-
-//             if (combinedCourse === undefined) {
-//                 combinedCourses.push({
-//                     name: course.course,
-//                     sections: []
-//                 });
-//                 combinedCourse = combinedCourses[combinedCourses.length - 1];
-//             }
-
-//             combinedCourse.sections.push({
-//                 courseId: course.courseId,
-//                 section: course.section
-//             })
-
-//             return combinedCourses;
-//         }, []);
-
-//         // looping through all of the sections and build out the object array we want
-//         crossLists = combinedCourses
-//             //we don't care for classes taught by an instructor that only has one section
-//             .filter(combinedCourse => combinedCourse.sections.length > 1)
-//             //sort by least to greatest so we can grab destination/source
-//             .map(combinedCourse => combinedCourse.sections.sort((a, b) => a.section - b.section))
-//             //build out the object array
-//             .map(combinedCourse => {
-
-//                 //grab first number in array for the destination and removing it from the array too
-//                 let destination = combinedCourse.sections.shift();
-
-//                 //we have the information now so we build an object and push it to the accumulator
-//                 return {
-//                     instructor: instructor.name,
-//                     instructorId: instructor.id,
-//                     course: combinedCourse.name,
-//                     destination: destination,
-//                     sources: combinedCourse.sections
-//                 };
-//             });
-
-//         return acc.concat(crossLists);
-//     });
-// }
