@@ -1,4 +1,3 @@
-const pretty = require('json-stringify-pretty-compact');
 const asyncLib = require('async');
 const {
     promisify

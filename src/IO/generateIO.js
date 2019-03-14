@@ -2,6 +2,7 @@ const d3 = require('d3-dsv');
 const fs = require('fs');
 const moment = require('moment');
 const canvas = require('canvas-api-wrapper');
+const helpers = require('../helpers');
 const questions = require('../questions');
 
 const TEST = false;
@@ -160,33 +161,6 @@ async function apiCall(term) {
 }
 
 /**************************************************
- * mapTermToInteger
- * 
- * This retrieves the terms and creates a map
- * to help ensure that we get the correct term
- * number since Canvas only uses integers for 
- * terms and it's not easy to understand.
- *************************************************/
-async function mapTermToInteger() {
-    const accountId = 1;
-    let termsArr = [];
-
-    let results = await canvas.get(`/api/v1/accounts/${accountId}/terms`);
-
-    results.forEach(result => {
-        // only append the ones that matter to the array
-        if (/\d/g.test(result.name)) {
-            termsArr.push({
-                'id': result.id,
-                'term': result.name,
-            });
-        }
-    });
-
-    return termsArr;
-}
-
-/**************************************************
  * identifyTermInteger
  * @param {Object} term
  * 
@@ -194,7 +168,7 @@ async function mapTermToInteger() {
  * user's input.
  *************************************************/
 async function identifyTermInteger(term) {
-    let map = await mapTermToInteger();
+    let map = await helpers.mapTermToInteger();
     let id = -1;
 
     map.forEach(ele => {
