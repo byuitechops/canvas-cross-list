@@ -8,20 +8,12 @@
 */
 
 const canvas = require('canvas-api-wrapper');
-const helpers = require('./helpers');
-
-/**************************************************************
- * getCourseSections
- * @param {Int} courseId
- * @returns {Array}
- * 
- * This function returns a paginated list of all of the sections
- * associated with the course.
- *************************************************************/
-async function getCourseSections(courseId) {
-    // https://canvas.instructure.com/doc/api/sections.html#method.sections.index
-    return await canvas.get(`/api/v1/courses/${courseId}/sections`);
-}
+const asyncLib = require('async');
+const promiseQueueLimit = require('./promiseQueueLimit');
+const {
+    promisify
+} = require('util');
+const asyncEach = promisify(asyncLib.each);
 
 /**************************************************************
  * checkGradebookActivity
@@ -40,15 +32,12 @@ async function checkGradebookActivity(courseId) {
 /**************************************************************
  * checkSubAccount
  * @param {Object} firstCourse
- * @param {Object} firstCourse
+ * @param {Object} secondCourse
  * @returns {Bool}
  * 
  * 
  *************************************************************/
 async function checkSubAccount(firstCourse, secondCourse) {
-    let firstCourse = await canvas.get(`/api/v1/courses/${firstCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
-    let secondCourse = await canvas.get(`/api/v1/courses/${secondCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
-
     if ((!firstCourse.account ||
             !secondCourse.account) ||
         (!firstCourse.account.id ||
@@ -60,15 +49,12 @@ async function checkSubAccount(firstCourse, secondCourse) {
 /**************************************************************
  * checkTerm
  * @param {Object} firstCourse
- * @param {Object} firstCourse
+ * @param {Object} secondCourse
  * @returns {Bool}
  * 
  * 
  *************************************************************/
 async function checkTerm(firstCourse, secondCourse) {
-    let firstCourse = await canvas.get(`/api/v1/courses/${firstCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
-    let secondCourse = await canvas.get(`/api/v1/courses/${secondCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
-
     if ((!firstCourse.term ||
             !secondCourse.term) ||
         (!firstCourse.term.id ||
@@ -78,30 +64,51 @@ async function checkTerm(firstCourse, secondCourse) {
 }
 
 /**************************************************************
- * checkSections
- * @param {Int} courseId
+ * checkTermAccount
+ * @param {Object} firstCourse
+ * @param {Object} secondCourse
+ * @returns {Object}
  * 
  * 
  *************************************************************/
-async function checkSections(courseId) {
-    let sectionsCourse = await canvas.get(`/api/v1/courses/${courseId}/sections`);
+async function checkTermAccount(firstCourse, secondCourse) {
+    let fCourse = await canvas.get(`/api/v1/courses/${firstCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
+    let sCourse = await canvas.get(`/api/v1/courses/${secondCourse.courseId}?include[]=sections&include[]=term&include[]=account`);
 
-    return sectionsCourse > 0;
-}
-
-async function retrieveCourses(coursesToRetrieve) {
-    let courseObjects = [];
-
-    for (let course in coursesToRetrieve) {
-        let courseObject = await canvas.get(`/api/v1/courses/${course.section}?include[]=sections&include[]=term&include[]=account`);
-        courseObjects.push(courseObject);
+    return {
+        term: await checkTerm(fCourse, sCourse),
+        subAccount: await checkSubAccount(fCourse, sCourse)
     }
-
-    return courseObjects;
 }
 
 /**************************************************************
- * masterChecker
+ * checkSections
+ * @param {Int} sourceId
+ * @returns {Bool}
+ * 
+ * 
+ *************************************************************/
+async function checkSections(sourceId) {
+    let sectionsCourse = await canvas.get(`/api/v1/courses/${sourceId}/sections`);
+
+    return sectionsCourse.length === 1;
+}
+
+/**************************************************************
+ * checkDestination
+ * @param {Int} destinationId
+ * @returns {Bool}
+ * 
+ * 
+ *************************************************************/
+async function checkDestination(destinationId) {
+    let destinationCourse = await canvas.get(`/api/v1/courses/${destinationId}/sections`);
+
+    return destinationCourse.length > 0;
+}
+
+/**************************************************************
+ * checkCourse
  * @param {Object} crossListObject
  * @returns {Object}
  * 
@@ -118,7 +125,7 @@ async function retrieveCourses(coursesToRetrieve) {
  * Whatever this function returns is what will be put into the 
  * report.
  *************************************************************/
-async function masterChecker(crossListObject) {
+async function checkCourse(crossListObject) {
     //check grade book activity
     //same subaccount
     //moving to a course that has no sections
@@ -132,40 +139,91 @@ async function masterChecker(crossListObject) {
     let gradeActivityPass = true;
     for (let source of sources) {
         let gradeActivityResults = await checkGradebookActivity(source.courseId);
-        if (gradeActivityResults.events.length > 0) gradeActivityPass = false;
+        if (!gradeActivityResults) gradeActivityPass = false;
     }
 
-    checkers.push(gradeActivityPass);
+    checkers.push({
+        pass: gradeActivityPass,
+        type: 'Grade Activity'
+    });
 
-    /******************* SAME SUBACCOUNT ******************************/
+    /******************** TERM/SUBACCOUNT ******************************/
     let sameSubAccountPass = true;
-    for (let source of sources) {
-        let subAccountResults = await checkSubAccount(destination, source);
-        if (!subAccountResults) sameSubAccountPass = false;
-    }
-
-    checkers.push(sameSubAccountPass);
-
-    /****************** SAME TERM ************************************/
     let sameTermPass = true;
     for (let source of sources) {
-        let sameTermResults = await checkTerm(destination, source);
-        if (!sameTermResults) sameTermPass = false;
+        let termSubAccountResults = await checkTermAccount(destination, source);
+        if (!termSubAccountResults.term) sameTermPass = false;
+        if (!termSubAccountResults.subAccount) sameSubAccountPass = false;
     }
 
-    checkers.push(sameTermPass);
+    checkers.push({
+        pass: sameTermPass,
+        type: 'Same Term'
+    });
+
+    checkers.push({
+        pass: sameSubAccountPass,
+        type: 'Same Subaccount'
+    });
 
     /**************** SECTIONS (SOURCE) *****************************/
     let sectionsPass = true;
     for (let source of sources) {
-        let sectionsResults = await checkSections(source);
+        let sectionsResults = await checkSections(source.courseId);
         if (!sectionsResults) sectionsPass = false;
     }
 
-    checkers.push(sectionsPass);
+    checkers.push({
+        pass: sectionsPass,
+        type: 'Source sections'
+    });
 
     /**************** SECTIONS (DEST) ******************************/
+    let sectionsDestinationPass = await checkDestination(destination.courseId);
+    checkers.push({
+        pass: sectionsDestinationPass,
+        type: 'Destination sections'
+    });
 
+    return checkers;
+}
+
+function masterChecker(crossListData, crossListCounter) {
+    return async function check(crossListObject) {
+        return new Promise(async (resolve, reject) => {
+            checkCourse(crossListObject)
+                .then(singleChecker => {
+                    console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} checked.`);
+                    resolve(singleChecker);
+                })
+                .catch(err => {
+                    console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} checked.`);
+                    reject({
+                        courseObject: crossListObject,
+                        message: err
+                    });
+                });
+        });
+    }
+}
+
+async function processCrossListData(crossListData) {
+    let queueLimit = 10;
+    let crossListCounter = 0;
+
+    console.log(`Found ${crossListData.length} potential cross-listing matches.`);
+    console.log(`Checking each against requirements...`);
+
+    await promiseQueueLimit(crossListData, masterChecker(crossListData, crossListCounter), queueLimit, closingSteps);
+}
+
+function closingSteps(err, data) {
+    if (err) {
+        console.log(err);
+        return;
+    }
+    console.log(data);
+    console.log('FINISHED RUNNING');
 }
 
 /**************************************************************
@@ -175,7 +233,14 @@ async function masterChecker(crossListObject) {
  * 
  *************************************************************/
 async function analyzeCrossListData(crossListData) {
-    //run masterChecker
+    await processCrossListData(crossListData);
+    // return await Promise.all(crossListData.map(async crossListObject => {
+    //     let data = await masterChecker(crossListObject);
+    //     console.log(data);
+    //     return data;
+    // }));
+
+    // return checkResults;
     //run api
     //store result
 }
@@ -183,21 +248,22 @@ async function analyzeCrossListData(crossListData) {
 /**************************************************************
  * reportCrossListResults
  * @param {Array} results
+ * @param {Object} crossListData
  * 
  * 
  *************************************************************/
-async function reportCrossListResults(results) {
+async function reportCrossListResults(results, crossListData) {
 
 }
 
 /**************************************************************
  * crossListApi
- * @param {Array} crossListData
+ * @param {Object} crossListData
  * 
  *  
  *************************************************************/
 async function crossListApi(crossListData) {
-
+    return await analyzeCrossListData(crossListData.readyForCrossList);
 }
 
 module.exports = {
