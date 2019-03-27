@@ -1,3 +1,6 @@
 node_modules/
 generatedCsv/
-toDelete.json
+toDelete*.json
+campus.json
+josh.json
+config.json

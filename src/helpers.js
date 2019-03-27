@@ -1,3 +1,9 @@
+function createBlacklist() {
+    return [
+        'GE 101',
+    ];
+}
+
 /**************************************************
  * createSubAccountsMap
  * 
@@ -80,5 +86,6 @@ function createSubAccountsMap() {
 }
 
 module.exports = {
-    createSubAccountsMap
+    createSubAccountsMap,
+    createBlacklist
 }

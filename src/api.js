@@ -8,12 +8,8 @@
 */
 
 const canvas = require('canvas-api-wrapper');
-const asyncLib = require('async');
-const promiseQueueLimit = require('./promiseQueueLimit');
-const {
-    promisify
-} = require('util');
-const asyncEach = promisify(asyncLib.each);
+const promiseLimit = require('promise-limit');
+var crossListCounter = 0;
 
 /**************************************************************
  * checkGradebookActivity
@@ -135,6 +131,11 @@ async function checkCourse(crossListObject) {
     let destination = crossListObject.destination;
     let sources = crossListObject.sources;
 
+    checkers.push({
+        object: crossListObject,
+        type: 'Cross List Object'
+    });
+
     /******************** GRADE ACTIVITY *******************************/
     let gradeActivityPass = true;
     for (let source of sources) {
@@ -188,61 +189,113 @@ async function checkCourse(crossListObject) {
     return checkers;
 }
 
-function masterChecker(crossListData, crossListCounter) {
-    return async function check(crossListObject) {
-        return new Promise(async (resolve, reject) => {
-            checkCourse(crossListObject)
-                .then(singleChecker => {
-                    console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} checked.`);
-                    resolve(singleChecker);
-                })
-                .catch(err => {
-                    console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} checked.`);
-                    reject({
-                        courseObject: crossListObject,
-                        message: err
-                    });
+/****************************************************************
+ * masterChecker
+ * @param {Array} crossListData
+ * @param {Int} crossListCounter
+ * @returns {Promise}
+ * 
+ * This is the driver for the promise queue and keeps track
+ * of all checks.
+ ***************************************************************/
+async function masterChecker(crossListObject, crossListData) {
+    //call checkCourse function which essentially performs all checks
+    return new Promise(async (resolve, reject) => {
+        checkCourse(crossListObject)
+            .then(singleChecker => {
+                console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} successfully checked.`);
+                resolve({
+                    instructor: crossListObject.instructor,
+                    course: crossListObject.course,
+                    checkResults: singleChecker
                 });
-        });
-    }
+            })
+            .catch(err => {
+                console.log(`(${++crossListCounter}/${crossListData.length}) Course: ${crossListObject.course} with Professor ${crossListObject.instructor} checked and a warning has occurred.`);
+
+                //the reason why it is a resolve is because of the Promise.all() stopping once an element rejects
+                resolve({
+                    courseObject: crossListObject,
+                    errorMessage: err
+                });
+            });
+    });
 }
 
-async function processCrossListData(crossListData) {
-    let queueLimit = 10;
-    let crossListCounter = 0;
+/***********************************************************
+ * processCrossListData
+ * @param {Array} crossListData
+ * @returns {Array}
+ * 
+ * This functions processes the data inside the parameter
+ * and sends it to the checkers to ensure that requirements
+ * are met before cross list.
+ **********************************************************/
+function processCrossListData(crossListData) {
+    let queueLimit = 30;
+    const limit = promiseLimit(queueLimit);
 
     console.log(`Found ${crossListData.length} potential cross-listing matches.`);
     console.log(`Checking each against requirements...`);
 
-    await promiseQueueLimit(crossListData, masterChecker(crossListData, crossListCounter), queueLimit, closingSteps);
-}
-
-function closingSteps(err, data) {
-    if (err) {
-        console.log(err);
-        return;
-    }
-    console.log(data);
-    console.log('FINISHED RUNNING');
+    //checking requirements through promised based queue with limits
+    return Promise.all((crossListData.map(crossListObject => limit(() => masterChecker(crossListObject, crossListData)))));
 }
 
 /**************************************************************
- * analyzeCrossListData
- * @param {Array} crossListData
+ * fixResultsData
+ * @param {Array} checkResultsData
+ * @return {Array}
+ * 
+ * This function goes through the array and does a "shelf sort"
+ * with the requirements and returns the following:
+ * 
+ * {
+ *      success: []   // the array of all of the crossList data that PASSED all requirements
+ *      fail: []      // the array of all of the crossList data that FAILED all requirements
+ * }
+ *************************************************************/
+function fixResultsData(checkResultsData) {
+    let checkResultsReduce = {
+        success: [],
+        fail: []
+    };
+
+    checkResultsReduce = checkResultsData.reduce((checkResultsReduce, check) => {
+        if (!check.checkResults) {
+            checkResultsReduce.fail.push(check);
+        } else {
+            let tempCheck = check.checkResults.filter(checkObject => checkObject.pass === false);
+
+            let checkToPush = check.checkResults[0].object;
+            (tempCheck.length > 0) ? checkResultsReduce.success.push(checkToPush): checkResultsReduce.fail.push(checkToPush)
+        }
+
+        return checkResultsReduce;
+    }, checkResultsReduce)
+
+    return checkResultsReduce.success;
+}
+
+/**************************************************************
+ * executeApi
+ * @param {Array} checkResultsData
  * 
  * 
  *************************************************************/
-async function analyzeCrossListData(crossListData) {
-    await processCrossListData(crossListData);
-    // return await Promise.all(crossListData.map(async crossListObject => {
-    //     let data = await masterChecker(crossListObject);
-    //     console.log(data);
-    //     return data;
-    // }));
-
-    // return checkResults;
+async function executeApi(checkResultsData) {
     //run api
-    //store result
+    console.log('Cross list execution module initiating.');
+    let updatedCheckData = fixResultsData(checkResultsData);
+    // console.log(JSON.stringify(updatedCheckData, null, 4));
+
+    for (let course of updatedCheckData) {
+        let destination = course.destination.courseId;
+
+        for (let source of course.sources) {
+            console.log(`Section: ${source.courseId}. Destination: ${destination}. API Call: "canvas.post('/api/v1/sections/${source.courseId}/crosslist/${destination}');"`);
+        }
+    }
 }
 
 /**************************************************************
@@ -252,8 +305,8 @@ async function analyzeCrossListData(crossListData) {
  * 
  * 
  *************************************************************/
-async function reportCrossListResults(results, crossListData) {
-
+async function reportCrossListResults(results, crossListData, apiError) {
+    //store results
 }
 
 /**************************************************************
@@ -263,7 +316,11 @@ async function reportCrossListResults(results, crossListData) {
  *  
  *************************************************************/
 async function crossListApi(crossListData) {
-    return await analyzeCrossListData(crossListData.readyForCrossList);
+    processCrossListData(crossListData.readyForCrossList)
+        .then(async checkResults => {
+            // console.log(JSON.stringify(checkResults, null, 4));
+            let apiResults = await executeApi(checkResults);
+        });
 }
 
 module.exports = {

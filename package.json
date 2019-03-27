@@ -16,7 +16,9 @@
     "d3-dsv": "^1.1.1",
     "inquirer": "^6.2.2",
     "moment": "^2.24.0",
-    "npm": "^6.8.0",
-    "read-in-csv": "git+https://github.com/byuitechops/read-in-csv.git"
+    "npm": "^6.9.0",
+    "promise-limit": "^2.7.0",
+    "read-in-csv": "git+https://github.com/byuitechops/read-in-csv.git",
+    "underscore": "^1.9.1"
   }
 }
