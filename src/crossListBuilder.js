@@ -1,9 +1,12 @@
-const pretty = require('json-stringify-pretty-compact');
+const _ = require('underscore');
 const asyncLib = require('async');
+const blacklist = require('./helpers');
 const {
     promisify
 } = require('util');
 const asyncReduce = promisify(asyncLib.reduce);
+
+const BLACKLIST = blacklist.createBlacklist();
 
 /**************************************
  * transformData
@@ -71,21 +74,54 @@ function transformData(csvEntries) {
  * 
  * It will return an object that is like:
  *  {
- *      toCrossList: []         // valid courses here
- *      dontHaveTeachers: []    // Courses that don't have an instructor
+ *      validInstructors: [],    // valid courses here
+ *      invalidInstructors: [],  // Courses that don't have an instructor
+ *      blacklistedCourses: [],  // Courses that are not to be cross listed.
  *  }
  ********************************************************/
 function filterInstructors(instructors) {
-    const BAD = "none found";
+    const BAD = 'none found';
 
     let identifyValidInstructors = {
         validInstructors: [],
-        invalidInstructors: []
+        invalidInstructors: [],
+        blacklistedCourses: []
     }
 
     identifyValidInstructors = instructors.reduce((identifyValidInstructors, instructor) => {
         if (instructor.name !== BAD && Number(instructor.id) !== -1) {
-            identifyValidInstructors['validInstructors'].push(instructor);
+            let splitInstructor = {
+                validCourses: [],
+                blacklistedCourses: []
+            };
+
+            splitInstructor = instructor.courses.reduce((splitInstructor, course) => {
+                if (BLACKLIST.indexOf(course.course) === -1) {
+                    splitInstructor['validCourses'].push(course);
+                } else {
+                    splitInstructor['blacklistedCourses'].push(course);
+                }
+
+                return splitInstructor;
+            }, splitInstructor)
+
+            let newValidInstructorObject = {
+                name: instructor.name,
+                id: instructor.id,
+                courses: splitInstructor.validCourses
+            };
+
+            let newBlacklistInstructorObject = {
+                name: instructor.name,
+                id: instructor.id,
+                courses: splitInstructor.blacklistedCourses
+            }
+
+            if (newValidInstructorObject.courses.length > 0)
+                identifyValidInstructors['validInstructors'].push(newValidInstructorObject)
+
+            if (newBlacklistInstructorObject.courses.length > 0)
+                identifyValidInstructors['blacklistedCourses'].push(newBlacklistInstructorObject);
         } else {
             identifyValidInstructors['invalidInstructors'].push(instructor);
         }
@@ -95,7 +131,8 @@ function filterInstructors(instructors) {
 
     return {
         validInstructors: identifyValidInstructors.validInstructors,
-        invalidInstructors: identifyValidInstructors.invalidInstructors
+        invalidInstructors: identifyValidInstructors.invalidInstructors,
+        blacklistedCourses: identifyValidInstructors.blacklistedCourses
     }
 }
 
@@ -194,13 +231,16 @@ async function buildCrossListData(csvData) {
         - moving to a course that does not have a section      
         - moving from a course that has more than one section
     */
+    console.log('Constructing cross list data');
     let instructorsCourses = transformData(csvData);
     let filteredInstructorsCourses = filterInstructors(instructorsCourses);
     let preparedCrossListData = await createCrossList(filteredInstructorsCourses.validInstructors);
 
+    console.log('Successfully built cross listing data.');
     return {
         readyForCrossList: preparedCrossListData,
-        dontHaveTeachers: filteredInstructorsCourses.invalidInstructors
+        dontHaveTeachers: filteredInstructorsCourses.invalidInstructors,
+        blacklistedCourses: filteredInstructorsCourses.blacklistedCourses
     }
 }
 

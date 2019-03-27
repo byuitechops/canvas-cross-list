@@ -12,12 +12,6 @@ async function processOutput(input) {
 
 }
 
-async function checkGradebookActivity(courseId) {
-    let gradeChanges = await canvas.get(`/api/v1/audit/grade_change/courses/${courseId}`);
-
-    return gradeChanges.events.length === 0;
-}
-
 function handleError(error) {
     console.log('ERROR: ', error);
 }

@@ -2,6 +2,7 @@ const d3 = require('d3-dsv');
 const fs = require('fs');
 const moment = require('moment');
 const canvas = require('canvas-api-wrapper');
+const helpers = require('../helpers');
 const questions = require('../questions');
 
 const TEST = false;
