@@ -7,6 +7,10 @@
     - Same subaccount/term -- helpers.mapTermToInteger()
 */
 
+const _ = require('underscore');
+const fs = require('fs');
+const d3 = require('d3-dsv');
+const moment = require('moment');
 const canvas = require('canvas-api-wrapper');
 const promiseLimit = require('promise-limit');
 var crossListCounter = 0;
@@ -268,13 +272,13 @@ function fixResultsData(checkResultsData) {
             let tempCheck = check.checkResults.filter(checkObject => checkObject.pass === false);
 
             let checkToPush = check.checkResults[0].object;
-            (tempCheck.length > 0) ? checkResultsReduce.success.push(checkToPush): checkResultsReduce.fail.push(checkToPush)
+            (tempCheck.length > 0) ? checkResultsReduce.fail.push(checkToPush): checkResultsReduce.success.push(checkToPush)
         }
 
         return checkResultsReduce;
     }, checkResultsReduce)
 
-    return checkResultsReduce.success;
+    return checkResultsReduce;
 }
 
 /**************************************************************
@@ -287,26 +291,124 @@ async function executeApi(checkResultsData) {
     //run api
     console.log('Cross list execution module initiating.');
     let updatedCheckData = fixResultsData(checkResultsData);
-    // console.log(JSON.stringify(updatedCheckData, null, 4));
+    // logMe(updatedCheckData);
+    let reportData = {
+        apiSuccess: [],
+        requirementsFailed: updatedCheckData.fail
+    };
 
-    for (let course of updatedCheckData) {
+    for (let course of updatedCheckData.success) {
         let destination = course.destination.courseId;
 
         for (let source of course.sources) {
             console.log(`Section: ${source.courseId}. Destination: ${destination}. API Call: "canvas.post('/api/v1/sections/${source.courseId}/crosslist/${destination}');"`);
+            reportData.apiSuccess.push(`${source.courseId} <-- ${destination}`);
         }
     }
+
+    return reportData;
+}
+
+function checkFolder(path) {
+    if (!fs.existsSync(path)) fs.mkdirSync(path);
 }
 
 /**************************************************************
  * reportCrossListResults
- * @param {Array} results
- * @param {Object} crossListData
+ * @param {Array} apiResults
+ * @param {Array} crossListData
+ * @param {Array} failedRequirements
  * 
  * 
  *************************************************************/
-async function reportCrossListResults(results, crossListData, apiError) {
-    //store results
+function reportCrossListResults(apiResults, crossListData, failedRequirements) {
+    const path = './apiReports';
+
+    checkFolder(path);
+
+    const columns = [
+        'Successful',
+        'Failed Requirements',
+        'No Instructors',
+        'Courses Blacklisted'
+    ];
+
+    reports = organizeReport(apiResults, crossListData, failedRequirements);
+    fs.writeFileSync('./toDelete6.json', JSON.stringify(reports, null, 4));
+
+    let csv = d3.csvFormat(reports, columns);
+    let time = moment().format('MM-DD-YY');
+    fs.writeFileSync(`${path}/report_generated_on_${time}.csv`, csv);
+    console.log('Successfully saved report');
+}
+
+function organizeReport(apiResults, crossListData, failedRequirements) {
+    //only going to have one element
+    let noTeachers = crossListData.dontHaveTeachers[0].courses;
+
+    //removing instructors with one course since we don't need to report that
+    let blacklistedCourses = crossListData.blacklistedCourses.filter(blacklist => blacklist.courses.length > 1);
+
+    const zippedArray = _.zip(apiResults,
+        noTeachers,
+        [].concat.apply([], blacklistedCourses.map(blacklist => blacklist.courses)),
+        failedRequirements);
+
+    let reports = [];
+    reports = zippedArray.reduce((reports, report) => {
+        let apiSuccess = report[0];
+        let dontHaveTeacher = report[1];
+        let blacklistedCourse = report[2];
+        let failedRequirement = report[3];
+
+        reports.push({
+            ...(apiSuccess && {
+                apiSuccess
+            }),
+            ...(dontHaveTeacher && {
+                dontHaveTeacher
+            }),
+            ...(blacklistedCourse && {
+                blacklistedCourse
+            }),
+            ...(failedRequirement && {
+                failedRequirement
+            })
+        });
+
+        return reports
+    }, reports);
+
+    return fixReports(reports);
+}
+
+function fixReports(reports) {
+    return reports.map(report => {
+        let failed = report.failedRequirement;
+
+        return {
+            ...(report.apiSuccess && {
+                'Successful': report.apiSuccess
+            }),
+            ...(report.dontHaveTeacher.courseId && {
+                'No Instructors': report.dontHaveTeacher.courseId
+            }),
+            ...(report.blacklistedCourse && {
+                'Courses Blacklisted': report.blacklistedCourse.courseId
+            }),
+            ...(failed && {
+                'Failed Requirements': `${failed.destination.courseId} <-- ${createSourceString(failed.sources)}`
+            }),
+        };
+    });
+}
+
+function createSourceString(sources) {
+    let sourceString = '';
+
+    sources.forEach(source => sourceString += `${source.courseId} `);
+
+    return sourceString;
 }
 
 /**************************************************************
@@ -318,9 +420,16 @@ async function reportCrossListResults(results, crossListData, apiError) {
 async function crossListApi(crossListData) {
     processCrossListData(crossListData.readyForCrossList)
         .then(async checkResults => {
-            // console.log(JSON.stringify(checkResults, null, 4));
+            // logMe(checkResults);
             let apiResults = await executeApi(checkResults);
+            reportCrossListResults(apiResults.apiSuccess, crossListData, apiResults.requirementsFailed);
+            console.log('Complete.');
         });
+}
+
+// for testing purposes
+function logMe(msg) {
+    console.log(JSON.stringify(msg, null, 4));
 }
 
 module.exports = {
