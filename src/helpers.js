@@ -1,3 +1,10 @@
+/****************************
+ * createBlacklist
+ * @returns {Array}
+ * 
+ * Returns a list of courses
+ * that is blacklisted
+ ***************************/
 function createBlacklist() {
     return [
         'GE 101',
@@ -6,6 +13,7 @@ function createBlacklist() {
 
 /**************************************************
  * createSubAccountsMap
+ * @returns {Object}
  * 
  * This returns the object that will help determine
  * if two courses are in the same subaccount.

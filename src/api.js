@@ -284,8 +284,10 @@ function fixResultsData(checkResultsData) {
 /**************************************************************
  * executeApi
  * @param {Array} checkResultsData
+ * @returns {Object}
  * 
- * 
+ * This function executes the api and returns a object of how
+ * it went.
  *************************************************************/
 async function executeApi(checkResultsData) {
     //run api
@@ -309,6 +311,13 @@ async function executeApi(checkResultsData) {
     return reportData;
 }
 
+/**************************************************
+ * checkFolder
+ * @param {String} path
+ * 
+ * This function checks for a folder and creates one
+ * if it does not exist
+ *************************************************/
 function checkFolder(path) {
     if (!fs.existsSync(path)) fs.mkdirSync(path);
 }
@@ -319,7 +328,8 @@ function checkFolder(path) {
  * @param {Array} crossListData
  * @param {Array} failedRequirements
  * 
- * 
+ * This function simply calls the correct function and creates
+ * a CSV of how the API went.
  *************************************************************/
 function reportCrossListResults(apiResults, crossListData, failedRequirements) {
     const path = './apiReports';
@@ -342,6 +352,16 @@ function reportCrossListResults(apiResults, crossListData, failedRequirements) {
     console.log('Successfully saved report');
 }
 
+/**************************************************************
+ * organizeReport
+ * @param {Array} apiResults
+ * @param {Array} crossListData
+ * @param {Array} failedRequirements
+ * @returns {Array}
+ * 
+ * This function organizes the report so it can be fed into 
+ * d3-dsv.
+ *************************************************************/
 function organizeReport(apiResults, crossListData, failedRequirements) {
     //only going to have one element
     let noTeachers = crossListData.dontHaveTeachers[0].courses;
@@ -361,6 +381,7 @@ function organizeReport(apiResults, crossListData, failedRequirements) {
         let blacklistedCourse = report[2];
         let failedRequirement = report[3];
 
+        //the null/undefined part will be omitted. yay for es8.
         reports.push({
             ...(apiSuccess && {
                 apiSuccess
@@ -382,10 +403,19 @@ function organizeReport(apiResults, crossListData, failedRequirements) {
     return fixReports(reports);
 }
 
+/********************************************************
+ * fixReports
+ * @param {Array} reports
+ * @returns {Array}
+ * 
+ * This goes through and fixes the array of objects to
+ * make it work with a CSV. This function will 
+ *******************************************************/
 function fixReports(reports) {
     return reports.map(report => {
         let failed = report.failedRequirement;
 
+        // build out the csv object and omit null/defined through some fancy ES8 stuff
         return {
             ...(report.apiSuccess && {
                 'Successful': report.apiSuccess
@@ -403,6 +433,14 @@ function fixReports(reports) {
     });
 }
 
+/****************************************
+ * createSourceString
+ * @param {Array} sources
+ * @return {String}
+ * 
+ * This creates the source string for the
+ * csv.
+ ***************************************/
 function createSourceString(sources) {
     let sourceString = '';
 
@@ -415,9 +453,16 @@ function createSourceString(sources) {
  * crossListApi
  * @param {Object} crossListData
  * 
- *  
+ * This is the main function behind the whole api portion. There
+ * must be a property named readyForCrossList in the parameter
+ * or it will print out that it will not able to process the data.
  *************************************************************/
 async function crossListApi(crossListData) {
+    if (!crossList.readyForCrossList) {
+        console.log('Unable to process request. Please check the data.');
+        return;
+    }
+
     processCrossListData(crossListData.readyForCrossList)
         .then(async checkResults => {
             // logMe(checkResults);

@@ -1,14 +1,10 @@
 const fs = require('fs');
 const getCSV = require('read-in-csv');
-const asyncLib = require('async');
 const questions = require('./questions.js');
-const {
-    promisify
-} = require('util');
-const asyncEach = promisify(asyncLib.each);
 
 /********************************
  * retrieveCSV
+ * @returns {Array}
  *
  * This retrieves the path for
  * the CSV from the user.
@@ -20,6 +16,7 @@ async function retrieveCSV() {
 /********************************
  * parseCSV
  * @param {String} filePath
+ * @returns {Array}
  * 
  * This checks to see if the file
  * exists. If it does, it'll call
@@ -41,12 +38,15 @@ async function parseCSV(filePath) {
 /********************************
  * checkCsv
  * @param {Object} csvObject
+ * @returns {Boolean}
  *
  * This checks the csv against
  * a series of constraints
  * 
  * NOTE: This function is still
- * a WIP.
+ * a WIP -- need to run it against
+ * requirements inside api. Thinking
+ * about abstracting it.
  * *****************************/
 function checkCsv(csvObject) {
     //need to add more constraints but this will do for now
@@ -73,6 +73,7 @@ function exists(obj, arr) {
 /********************************
  * fixCsvObject
  * @param {Object} csvObject
+ * @returns {Object}
  *  
  * This function builds out
  * the array of objects to what
@@ -110,6 +111,7 @@ function fixCsvObject(csvObject) {
             });
         }
     });
+
     return finalObj;
 }
 
