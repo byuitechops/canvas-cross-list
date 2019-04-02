@@ -59,6 +59,8 @@ async function processOutput(term) {
     let csv = d3.csvFormat(results, columns);
     fs.writeFileSync(path, csv);
     console.log('Inserted a CSV in generatedCsv folder.');
+
+    return results;
 }
 
 /**************************************************
@@ -87,7 +89,7 @@ function checkFolder() {
 
 /**************************************************
  * generateIO
- * @returns {undefined}
+ * @returns {Array}
  * 
  * This serves as a driver function to generate
  * the CSV necessary for the job.
@@ -95,9 +97,7 @@ function checkFolder() {
 async function generateIO() {
     try {
         let input = await getInput();
-        let output = await processOutput(input);
-
-        return output;
+        return await processOutput(input);
     } catch (err) {
         if (err) {
             handleError(err);

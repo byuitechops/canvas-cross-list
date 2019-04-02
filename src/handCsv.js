@@ -101,9 +101,11 @@ function fixCsvObject(csvObject) {
             let newTemplate = {
                 'sourceOUs': [],
                 'destinationOU': -1,
+                'success': false
             };
             newTemplate.sourceOUs.push(sourceOU);
             newTemplate.destinationOU = destinationOU;
+            newTemplate.success = true;
             finalObj.push(newTemplate);
         } else {
             finalObj.forEach(ele => {
