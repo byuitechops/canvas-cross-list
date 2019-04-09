@@ -5,3 +5,11 @@ campus.json
 josh.json
 config.json
 apiReports/
+compareCXWithLMS.js
+CXCoursesTest.json
+lmsDataWrapper.js
+/src/prod.txt
+/src/getFailed.js
+/src/compare.js
+/results/*
+/src/csv/*

@@ -131,6 +131,7 @@ async function checkCourse(crossListObject) {
     //moving to a course that has no sections
     //moving from a course that has more than one section
 
+
     let checkers = [];
     let destination = crossListObject.destination;
     let sources = crossListObject.sources;
@@ -139,6 +140,7 @@ async function checkCourse(crossListObject) {
         object: crossListObject,
         type: 'Cross List Object'
     });
+
 
     /******************** GRADE ACTIVITY *******************************/
     let gradeActivityPass = true;
@@ -303,8 +305,11 @@ async function executeApi(checkResultsData) {
         let destination = course.destination.courseId;
 
         for (let source of course.sources) {
-            console.log(`Section: ${source.courseId}. Destination: ${destination}. API Call: "canvas.post('/api/v1/sections/${source.courseId}/crosslist/${destination}');"`);
-            reportData.apiSuccess.push(`${source.courseId} <-- ${destination}`);
+            let sections = await canvas.get(`/api/v1/courses/${source.courseId}/sections`);
+            let sectionId = sections[0].id;
+            canvas.post(`/api/v1/sections/${sectionId}/crosslist/${destination}`);
+            console.log(`Section: ${source.courseId}. Destination: ${destination}. API Call: "canvas.post('/api/v1/sections/${sectionId}/crosslist/${destination}');"`);
+            reportData.apiSuccess.push(`${source.courseId} --> ${destination}`);
         }
     }
 
@@ -348,7 +353,7 @@ function reportCrossListResults(apiResults, crossListData, failedRequirements) {
 
     let csv = d3.csvFormat(reports, columns);
     let time = moment().format('MM-DD-YY');
-    fs.writeFileSync(`${path}/report_generated_on_${time}.csv`, csv);
+    fs.writeFileSync(`${path}/report_generated_on_${time}_${Date.now()}.csv`, csv);
     console.log('Successfully saved report');
 }
 
@@ -412,6 +417,7 @@ function organizeReport(apiResults, crossListData, failedRequirements) {
  * make it work with a CSV. This function will 
  *******************************************************/
 function fixReports(reports) {
+    // console.log(reports);
     return reports.map(report => {
         let failed = report.failedRequirement;
 
@@ -458,7 +464,7 @@ function createSourceString(sources) {
  * or it will print out that it will not able to process the data.
  *************************************************************/
 async function crossListApi(crossListData) {
-    if (!crossList.readyForCrossList) {
+    if (!crossListData.readyForCrossList) {
         console.log('Unable to process request. Please check the data.');
         return;
     }

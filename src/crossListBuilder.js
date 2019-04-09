@@ -39,8 +39,7 @@ function transformData(csvEntries) {
         let courseId = csvEntry.id;
 
         let instructorsCourse = instructorsCourses.find(instructorsCourse => {
-            return (instructorsCourse.name.toLowerCase() === instructor.toLowerCase() &&
-                instructorsCourse.id === instructorId)
+            return instructorsCourse.id === instructorId;
         });
 
         if (instructorsCourse === undefined) {
