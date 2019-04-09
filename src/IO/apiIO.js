@@ -1,6 +1,5 @@
 const d3 = require('d3-dsv');
 const path = require('path');
-const getCSV = require('read-in-csv');
 const apiModule = require('../api');
 const crossListBuilder = require('../crossListBuilder');
 
@@ -16,7 +15,7 @@ async function getInput() {
     }
 
     try {
-        fs.accessSync(path, fs.constants.F_OK);
+        fs.accessSync(csvFile, fs.constants.F_OK);
     } catch (err) {
         throw new Error('CSV file does not exist...');
     }
@@ -30,7 +29,7 @@ async function processOutput(input) {
         let csvInfo = d3.csvParse(fs.readFileSync(input, 'utf-8'));
         let csvData = await crossListBuilder.buildCrossListData(csvInfo);
 
-        await apiModule.crossListApi(csvData);
+        return await apiModule.crossListApi(csvData);
     } catch (err) {
         throw err;
     }
